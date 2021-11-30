@@ -1,6 +1,7 @@
 package main
 
 import (
+	"debug/elf"
 	"fmt"
 	"os"
 
@@ -22,7 +23,8 @@ func main() {
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			versions, err := glibccheck.ParseFile(args[0])
-			if err != nil {
+			// if the binary is statically linked, don't fail
+			if err != nil && err != elf.ErrNoSymbols {
 				return err
 			}
 			for _, v := range versions {
@@ -72,18 +74,18 @@ func main() {
 	rootCmd.AddCommand(&cobra.Command{
 		Use:           "assert-all condition filename",
 		Short:         "asserts that the given condition holds for every glibc version in the file",
-		Long:          "The variables 'major', 'minor', and 'patch' are bound for the current version, 'patch' is bound to 0 for versions without patch versions, such as '2.32'. Example: 'glibc-check all-versions 'major == 2 && minor > 10'",
+		Long:          "The variables 'major', 'minor', and 'patch' are bound for the current version, 'patch' is bound to 0 for versions without patch versions, such as '2.32'. Example: 'glibc-check assert-all 'major == 2 && minor > 10'",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			versions, err := glibccheck.ParseFile(args[1])
 			if err != nil {
+				// if the binary is statically linked, there's nothing to check
+				if err == elf.ErrNoSymbols {
+					return nil
+				}
 				return err
-			}
-			if len(versions) == 0 {
-				fmt.Fprintln(os.Stderr, "no glibc versions found")
-				os.Exit(1)
 			}
 			violations, err := versions.FindViolations(args[0])
 			if len(violations) > 0 {
